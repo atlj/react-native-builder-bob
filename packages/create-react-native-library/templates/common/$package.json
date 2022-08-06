@@ -147,7 +147,17 @@
         }
       ]
     ]
-<% if (project.turbomodule) { -%>
+<% if (project.view) { -%>
+  },
+  "codegenConfig": {
+    "libraries": [
+      {
+        "name": "<%- project.name -%>ViewSpec",
+        "type": "components",
+        "jsSrcsDir": "src"
+      }
+    ]
+<% else if (project.turbomodule) { -%>
   },
   "codegenConfig": {
     "libraries": [
