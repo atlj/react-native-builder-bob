@@ -1,8 +1,9 @@
 name: Test all templates
-on: pull_request
+on: [pull_request, workflow_dispatch]
 
 jobs:
-  build-package:
+  test-all-templates:
+    name: Test all templates
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -24,16 +25,27 @@ jobs:
         run: |
           yarn prepare
 
-  check-example:
-    runs-on: ubuntu-latest
-    needs: [build-package]
-    steps:
-      - name: Check directory
-        working-directory: ./packages/create-react-native-library/
-        run: |
-          ls -la
-
       - name: Create example app
-        working-directory: ./packages/create-react-native-library/bin
+        working-directory: ./packages/create-react-native-library
         run: |
-          ./create-react-native-library test --slug test --description test --author-name test --author-email test@test --author-url https:// --repo-url https://
+          ./create-react-native-library test --slug test --description test --author-name test --author-email test@test --author-url https:// --repo-url https:// --type module --example native --languages js
+
+      - name: Install dependencies of example app
+        working-directory: ./packages/create-react-native-library/test
+        run: |
+          yarn install
+
+      - name: Lint example app
+        working-directory: ./packages/create-react-native-library/test
+        run: |
+          yarn lint
+
+      - name: Generate types of example app
+        working-directory: ./packages/create-react-native-library/test
+        run: |
+          yarn typescript
+
+      - name: Run tests on example app
+        working-directory: ./packages/create-react-native-library/test
+        run: |
+          yarn test
