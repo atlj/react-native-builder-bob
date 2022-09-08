@@ -6,7 +6,7 @@ jobs:
     name: Test all templates
     runs-on: ubuntu-latest
     strategy:
-      - matrix:
+      matrix:
         example: [native]
         type: [module, view]
         language: [jave-obj, java-swift, kotlin-objc, kotlin-swift, cpp, js]
