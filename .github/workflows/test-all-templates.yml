@@ -28,6 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-package]
     steps:
+      - name: Check directory
+        working-directory: ./packages/create-react-native-library/
+        run: |
+          ls -la
+
       - name: Create example app
         working-directory: ./packages/create-react-native-library/bin
         run: |
