@@ -9,7 +9,7 @@ jobs:
       matrix:
         example: [native]
         type: [module, view]
-        language: [jave-obj, java-swift, kotlin-objc, kotlin-swift, cpp, js]
+        language: [java-objc, java-swift, kotlin-objc, kotlin-swift, cpp, js]
         include:
           - language: js
             example: expo
