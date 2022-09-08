@@ -13,6 +13,7 @@ jobs:
         include:
           - language: js
             example: expo
+            type: module
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
