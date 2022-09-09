@@ -28,13 +28,6 @@ jobs:
           node-version: 16.13.x
           cache: yarn
 
-      - name: Restore build cache
-        id: build-cache
-        uses: actions/cache@v3
-        with:
-          path: packages/create-react-native-library/lib
-          key: ${{ runner.os}}-build-${{ hashFiles('packages/create-react-native-library/lib/**/*') }}
-
       - name: Restore root level yarn cache
         id: root-yarn-cache
         uses: actions/cache@v3
@@ -49,7 +42,6 @@ jobs:
           yarn install --frozen-lockfile
 
       - name: Build package
-        if: steps.build-cache.outputs.cache-hit != 'true'
         working-directory: ./packages/create-react-native-library
         run: |
           yarn prepare
