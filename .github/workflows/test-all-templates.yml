@@ -32,19 +32,15 @@ jobs:
         id: build-cache
         uses: actions/cache@v3
         with:
-          path: |
-            'packages/create-react-native-library/lib'
-
-          key: ${{ runner.os}}-build
+          path: packages/create-react-native-library/lib
+          key: ${{ runner.os}}-build-${{ hashFiles('packages/create-react-native-library/lib/**/*') }}
 
       - name: Restore root level yarn cache
         id: root-yarn-cache
         if: steps.build-cache.outputs.cache-hit != 'true'
         uses: actions/cache@v3
         with:
-          path: |
-            '**/node_modules'
-            '.yarn/root-install-state.gz'
+          path: node_modules
           key: ${{ runner.os }}-root-yarn-${{ hashFiles('yarn.lock') }}
 
       - name: Install dependencies
@@ -64,7 +60,17 @@ jobs:
         run: |
           ./create-react-native-library test --slug test --description test --author-name test --author-email test@test --author-url https:// --repo-url https:// --type ${{ matrix.type }} --languages ${{ matrix.language }} --example ${{ matrix.example }}
 
+      - name: Restore dependencies of example app
+        id: example-app-yarn-cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            packages/create-react-native-library/bin/test/node_modules
+            packages/create-react-native-library/bin/test/example/node_modules
+          key: ${{ runner.os }}-example-app-yarn-${{ matrix.type }}-${{ matrix.language }}-${{ matrix.example}}-${{ hashFiles('yarn.lock') }}
+
       - name: Install dependencies of example app
+        if: steps.example-app-yarn-cache.outputs.cache-hit != 'true'
         working-directory: ./packages/create-react-native-library/bin/test
         run: |
           yarn install
