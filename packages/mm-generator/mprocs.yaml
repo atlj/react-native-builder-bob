@@ -1,0 +1,3 @@
+procs:
+  nodemon:
+    shell: "npx nodemon -x 'yarn prepare' -e '*.ts'"
