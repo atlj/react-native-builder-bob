@@ -12,6 +12,27 @@ import type {
   SchemaType,
 } from '@react-native/codegen/lib/CodegenSchema';
 
+const BASIC_KEYWORDS = [
+  'BooleanTypeAnnotation',
+  'DoubleTypeAnnotation',
+  'Int32TypeAnnotation',
+  'StringTypeAnnotation',
+  'NumberTypeAnnotation',
+  'FloatTypeAnnotation',
+] satisfies NativeModuleParamTypeAnnotation['type'][];
+
+type BasicType = (typeof BASIC_KEYWORDS)[number];
+type ComplexType = Exclude<NativeModuleParamTypeAnnotation['type'], BasicType>;
+
+const BASIC_KEYWORD_MAP: Record<BasicType, string> = {
+  BooleanTypeAnnotation: 'BOOL',
+  DoubleTypeAnnotation: 'double',
+  Int32TypeAnnotation: 'int',
+  StringTypeAnnotation: 'NSString',
+  NumberTypeAnnotation: 'NSNumber',
+  FloatTypeAnnotation: 'float',
+} as const;
+
 const CodegenConfig = z.object({
   name: z.string(),
   jsSrcsDir: z.string(),
@@ -68,61 +89,91 @@ for (const key of Object.keys(schema.modules)) {
     continue;
   }
 
-  const properties = module.spec.properties;
+  const moduleProperties = module.spec.properties;
 
-  for (const property of properties) {
-    const result = handleAnnotation(property);
-    console.log(result);
+  for (const module of moduleProperties) {
+    if (module.typeAnnotation.type === 'FunctionTypeAnnotation') {
+      const signature = generateMethodSignature(
+        module.name,
+        module.typeAnnotation.params,
+        module.typeAnnotation.returnTypeAnnotation
+      );
+      console.log(signature);
+    } else {
+      console.log(module.typeAnnotation.type);
+    }
   }
 }
 
-// Generate objc code from schema
-function handleAnnotation(
-  param:
-    | NamedShape<Nullable<NativeModuleParamTypeAnnotation>>
-    | NamedShape<Nullable<NativeModuleReturnTypeAnnotation>>
-): string {
-  switch (param.typeAnnotation.type) {
-    case 'BooleanTypeAnnotation':
-      return `BOOL`;
-    case 'NullableTypeAnnotation':
-      return `Nullable ${handleAnnotation({
-        typeAnnotation: param.typeAnnotation.typeAnnotation,
-        name: param.name,
-        optional: true,
-      })}`;
-    case 'DoubleTypeAnnotation':
-      return `double`;
-    case 'Int32TypeAnnotation':
-      return `int`;
-    case 'StringTypeAnnotation':
-      return `NSString`;
-    case 'NumberTypeAnnotation':
-      return `NSNumber`;
-    case 'FloatTypeAnnotation':
-      return `float`;
-    case 'VoidTypeAnnotation':
-      return `void`;
-    case 'ArrayTypeAnnotation':
-      return `NSArray`;
-    case 'EnumDeclaration':
-      return `NSInteger`;
-    case 'ObjectTypeAnnotation':
-      return `NSDictionary`;
-    case 'FunctionTypeAnnotation':
-      const params = param.typeAnnotation.params
-        .map((param) => `(${handleAnnotation(param)} *) ${param.name}`)
-        .join(': ');
-      const result = `(${handleAnnotation({
-        typeAnnotation: param.typeAnnotation.returnTypeAnnotation,
-        name: param.name,
-        optional: false,
-      })}) ${param.name}: ${params}`;
-      return result;
-    default:
-      return '';
-  }
+function generateMethodSignature(
+  methodName: string,
+  params: readonly NamedShape<Nullable<NativeModuleParamTypeAnnotation>>[],
+  returnType: Nullable<NativeModuleReturnTypeAnnotation>
+) {
+  const isPromise = returnType.type === 'PromiseTypeAnnotation';
+
+  return `RCT_EXPORT_METHOD(${generateArgsSignature(methodName, params)}${
+    isPromise
+      ? ' resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject'
+      : ''
+  }) {
+    return [self.swiftImpl ${generateArgsSignature(methodName, params, false)}${
+      isPromise ? ' resolve:resolve reject:reject' : ''
+    }];
+}`;
 }
 
-// 4. Use the schema to generate the mm files
-// 5. Save the generated files to the output directory
+function generateArgsSignature(
+  methodName: string,
+  params: readonly NamedShape<Nullable<NativeModuleParamTypeAnnotation>>[],
+  addType: boolean = true
+) {
+  let result = `${methodName}`;
+  for (let index = 0; index < params.length; index++) {
+    const param = params[index]!;
+
+    if (index > 0) {
+      result += ` ${param.name}`;
+    }
+
+    result += `:${
+      addType ? '(' + generateTypeSignature(param.typeAnnotation) + ')' : ''
+    }${param.name}`;
+  }
+
+  return result;
+}
+
+function generateTypeSignature(
+  type: Nullable<NativeModuleParamTypeAnnotation>
+) {
+  if (BASIC_KEYWORDS.includes(type.type)) {
+    return handleBasicType(type.type);
+  }
+
+  return handleComplexType(type.type);
+}
+
+function handleBasicType(type: BasicType): string {
+  return BASIC_KEYWORD_MAP[type];
+}
+
+function handleComplexType(type: ComplexType): string {
+  switch (type) {
+    case 'UnionTypeAnnotation':
+    // Inspect the source for this
+  }
+
+  return type; // TODO remove me
+}
+
+// -*** TODO ***-
+// Handle callback
+// Handle promise
+// Handle enum
+// Handle struct
+// Handle union
+// Handle nullable
+// Handle/investigate getConstants differently (optional)
+// Check if non promise returns work
+// -*** TODO ***-
