@@ -1,82 +1,10 @@
-import * as z from 'zod';
-import { execSync } from 'child_process';
-
-import fs from 'fs-extra';
-import path from 'path';
-
-import type {
-  NamedShape,
-  NativeModuleParamTypeAnnotation,
-  NativeModuleReturnTypeAnnotation,
-  Nullable,
-  SchemaType,
-} from '@react-native/codegen/lib/CodegenSchema';
-
-const BASIC_KEYWORDS = [
-  'BooleanTypeAnnotation',
-  'DoubleTypeAnnotation',
-  'Int32TypeAnnotation',
-  'StringTypeAnnotation',
-  'NumberTypeAnnotation',
-  'FloatTypeAnnotation',
-] satisfies NativeModuleParamTypeAnnotation['type'][];
-
-type BasicType = (typeof BASIC_KEYWORDS)[number];
-type ComplexType = Exclude<NativeModuleParamTypeAnnotation['type'], BasicType>;
-
-const BASIC_KEYWORD_MAP: Record<BasicType, string> = {
-  BooleanTypeAnnotation: 'BOOL',
-  DoubleTypeAnnotation: 'double',
-  Int32TypeAnnotation: 'int',
-  StringTypeAnnotation: 'NSString',
-  NumberTypeAnnotation: 'NSNumber',
-  FloatTypeAnnotation: 'float',
-} as const;
-
-const CodegenConfig = z.object({
-  name: z.string(),
-  jsSrcsDir: z.string(),
-  type: z.union([
-    z.literal('modules'),
-    z.literal('components'),
-    z.literal('all'),
-  ]),
-});
-
-type CodegenConfig = z.infer<typeof CodegenConfig>;
-
-function parseCodegenConfig() {
-  const packageJson = fs.readJsonSync(path.join(process.cwd(), 'package.json'));
-
-  const codegenConfigParse = CodegenConfig.safeParse(packageJson.codegenConfig);
-  if (!codegenConfigParse.success) {
-    throw new Error('Invalid codegenConfig');
-  }
-
-  return codegenConfigParse.data;
-}
-
-function generateSchema(codegenConfig: CodegenConfig): SchemaType {
-  const schemaParserPath = require.resolve(
-    '@react-native/codegen/lib/cli/combine/combine-js-to-schema-cli'
-  );
-
-  const generatedSchemaPath = path.join(
-    process.cwd(),
-    'schemas',
-    `${codegenConfig.name}.schema.json`
-  );
-
-  if (!fs.existsSync(generatedSchemaPath)) {
-    fs.ensureFileSync(generatedSchemaPath);
-  }
-
-  const commandToGenerateSchema = `node ${schemaParserPath} --platform ios ${generatedSchemaPath} ${codegenConfig.jsSrcsDir}`;
-
-  execSync(commandToGenerateSchema);
-
-  return fs.readJsonSync(generatedSchemaPath);
-}
+import { generateSchema, parseCodegenConfig } from './schema';
+import {
+  StructCollector,
+  convertProtocolMethodToSwiftCall,
+  createAliasResolver,
+  serializeMethod,
+} from './serializeMethod';
 
 const codegenConfig = parseCodegenConfig();
 const schema = generateSchema(codegenConfig);
@@ -89,91 +17,56 @@ for (const key of Object.keys(schema.modules)) {
     continue;
   }
 
-  const moduleProperties = module.spec.properties;
+  const aliasResolver = createAliasResolver(module.aliasMap);
+  const structCollector = new StructCollector();
 
-  for (const module of moduleProperties) {
-    if (module.typeAnnotation.type === 'FunctionTypeAnnotation') {
-      const signature = generateMethodSignature(
-        module.name,
-        module.typeAnnotation.params,
-        module.typeAnnotation.returnTypeAnnotation
-      );
-      console.log(signature);
-    } else {
-      console.log(module.typeAnnotation.type);
-    }
-  }
+  const serializedModules = module.spec.properties
+    .filter((property) => property.name !== 'getConstants')
+    .map((property) =>
+      serializeMethod(
+        module.moduleName,
+        property,
+        structCollector,
+        aliasResolver
+      )
+    );
+
+  convertProtocolMethodToSwiftCall(serializedModules[0][0].protocolMethod);
+
+  const contents = `#import "${module.moduleName}.h"
+
+@implementation ${module.moduleName}{
+  ${module.moduleName}Swift* swift_impl; 
 }
 
-function generateMethodSignature(
-  methodName: string,
-  params: readonly NamedShape<Nullable<NativeModuleParamTypeAnnotation>>[],
-  returnType: Nullable<NativeModuleReturnTypeAnnotation>
-) {
-  const isPromise = returnType.type === 'PromiseTypeAnnotation';
+RCT_EXPORT_MODULE()
 
-  return `RCT_EXPORT_METHOD(${generateArgsSignature(methodName, params)}${
-    isPromise
-      ? ' resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject'
-      : ''
-  }) {
-    return [self.swiftImpl ${generateArgsSignature(methodName, params, false)}${
-      isPromise ? ' resolve:resolve reject:reject' : ''
-    }];
-}`;
+- (instancetype)init {
+    swift_impl = [[${module.moduleName}Swift alloc] init];
+    return self;
 }
 
-function generateArgsSignature(
-  methodName: string,
-  params: readonly NamedShape<Nullable<NativeModuleParamTypeAnnotation>>[],
-  addType: boolean = true
-) {
-  let result = `${methodName}`;
-  for (let index = 0; index < params.length; index++) {
-    const param = params[index]!;
-
-    if (index > 0) {
-      result += ` ${param.name}`;
-    }
-
-    result += `:${
-      addType ? '(' + generateTypeSignature(param.typeAnnotation) + ')' : ''
-    }${param.name}`;
-  }
-
-  return result;
++ (BOOL)requiresMainQueueSetup {
+    return NO;
 }
 
-function generateTypeSignature(
-  type: Nullable<NativeModuleParamTypeAnnotation>
-) {
-  if (BASIC_KEYWORDS.includes(type.type)) {
-    return handleBasicType(type.type);
-  }
+# pragma mark - Methods
 
-  return handleComplexType(type.type);
+${serializedModules
+  .map(([method]) => convertProtocolMethodToSwiftCall(method!.protocolMethod))
+  .join('\n\n')}
+
+# pragma mark - New Arch Pointer
+
+#ifdef RCT_NEW_ARCH_ENABLED
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+    (const facebook::react::ObjCTurboModule::InitParams &)params
+{
+    return std::make_shared<facebook::react::${module.moduleName}SpecJSI>(params);
 }
+#endif
 
-function handleBasicType(type: BasicType): string {
-  return BASIC_KEYWORD_MAP[type];
+@end`;
+
+  console.log(contents);
 }
-
-function handleComplexType(type: ComplexType): string {
-  switch (type) {
-    case 'UnionTypeAnnotation':
-    // Inspect the source for this
-  }
-
-  return type; // TODO remove me
-}
-
-// -*** TODO ***-
-// Handle callback
-// Handle promise
-// Handle enum
-// Handle struct
-// Handle union
-// Handle nullable
-// Handle/investigate getConstants differently (optional)
-// Check if non promise returns work
-// -*** TODO ***-
