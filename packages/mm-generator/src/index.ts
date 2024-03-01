@@ -18,6 +18,12 @@ const args = {
     )}`,
     defaultDescription:
       'By default, we will look for a podspec in the current directory and use the name of the pod as the Swift header.',
+    alias: 's',
+  },
+  'dry-run': {
+    type: 'boolean',
+    description: 'Print the generated mm files without writing them to the file system.',
+    alias: 'd',
   },
 } satisfies Record<string, yargs.Options>;
 
@@ -116,6 +122,11 @@ ${serializedMethods
 @end`,
         ];
       });
+
+  if(argv.dryRun) {
+    console.log(filesToWrite.map(([filePath, fileContent]) => `File: ${filePath}\n${fileContent}`).join('\n\n'));
+    return;
+  }
 
   try {
     Promise.allSettled(
