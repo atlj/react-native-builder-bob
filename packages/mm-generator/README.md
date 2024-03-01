@@ -1,12 +1,9 @@
-# react-native-builder-bob
+# mm-generator
 
-CLI to build JavaScript files for React Native libraries.
+CLI to create the necessary `.mm` files for React Native native modules.
+This script reads your TypeScript codegen definitions and generates the necessary `.mm` files for your native modules.
 
 Quick start:
 
-```sh
-cd your-project
-npx react-native-builder-bob@latest init
-```
-
-See more details on the [documentation website](https://callstack.github.io/react-native-builder-bob/build).
+`yarn add -D mm-generator`
+`npx mm-generator`
