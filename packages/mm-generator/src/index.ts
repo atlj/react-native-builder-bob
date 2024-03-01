@@ -31,8 +31,6 @@ for (const key of Object.keys(schema.modules)) {
       )
     );
 
-  convertProtocolMethodToSwiftCall(serializedModules[0][0].protocolMethod);
-
   const contents = `#import "${module.moduleName}.h"
 
 @implementation ${module.moduleName}{

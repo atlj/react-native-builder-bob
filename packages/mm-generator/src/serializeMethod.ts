@@ -1,5 +1,4 @@
 import { serializeMethod as serializeMethodImpl } from '@react-native/codegen/lib/generators/modules/GenerateModuleObjCpp/serializeMethod';
-
 import { StructCollector } from '@react-native/codegen/lib/generators/modules/GenerateModuleObjCpp/StructCollector';
 
 import type {

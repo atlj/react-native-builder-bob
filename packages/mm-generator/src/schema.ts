@@ -1,8 +1,11 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { execSync } from 'child_process';
 
 import type { SchemaType } from '@react-native/codegen/lib/CodegenSchema';
+
+import {
+  TypeScriptParser
+} from '@react-native/codegen/lib/parsers/typescript/parser';
 
 import { z } from 'zod';
 
@@ -29,26 +32,34 @@ function parseCodegenConfig() {
   return codegenConfigParse.data;
 }
 
+const typescriptParser = new TypeScriptParser();
+
 function generateSchema(codegenConfig: CodegenConfig): SchemaType {
-  const schemaParserPath = require.resolve(
-    '@react-native/codegen/lib/cli/combine/combine-js-to-schema-cli'
+  const files = fs.readdirSync(codegenConfig.jsSrcsDir).map((file) => {
+    return path.join(codegenConfig.jsSrcsDir, file);
+  }).filter((file) => {
+    return fs.statSync(file).isFile();
+  })
+
+  return files.reduce(
+    (merged, filename) => {
+      const contents = fs.readFileSync(filename, 'utf8');
+
+      if (
+        contents &&
+        (/export\s+default\s+\(?codegenNativeComponent</.test(contents) ||
+          /extends TurboModule/.test(contents))
+      ) {
+        const schema = typescriptParser.parseFile(filename);
+
+        if (schema && schema.modules) {
+          merged.modules = {...merged.modules, ...schema.modules};
+        }
+      }
+      return merged;
+    },
+    {modules: {}},
   );
-
-  const generatedSchemaPath = path.join(
-    process.cwd(),
-    'schemas',
-    `${codegenConfig.name}.schema.json`
-  );
-
-  if (!fs.existsSync(generatedSchemaPath)) {
-    fs.ensureFileSync(generatedSchemaPath);
-  }
-
-  const commandToGenerateSchema = `node ${schemaParserPath} --platform ios ${generatedSchemaPath} ${codegenConfig.jsSrcsDir}`;
-
-  execSync(commandToGenerateSchema);
-
-  return fs.readJsonSync(generatedSchemaPath);
 }
 
 export { parseCodegenConfig, generateSchema };
