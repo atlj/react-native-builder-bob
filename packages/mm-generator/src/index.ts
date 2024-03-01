@@ -22,7 +22,8 @@ const args = {
   },
   'dry-run': {
     type: 'boolean',
-    description: 'Print the generated mm files without writing them to the file system.',
+    description:
+      'Print the generated mm files without writing them to the file system.',
     alias: 'd',
   },
 } satisfies Record<string, yargs.Options>;
@@ -102,9 +103,7 @@ RCT_EXPORT_MODULE()
 # pragma mark - Methods
 
 ${serializedMethods
-  .map(([method]) =>
-    convertProtocolMethodToSwiftCall(method!.protocolMethod)
-  )
+  .map(([method]) => convertProtocolMethodToSwiftCall(method!.protocolMethod))
   .join('\n\n')}
 
 # pragma mark - New Arch Pointer
@@ -113,9 +112,7 @@ ${serializedMethods
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
   (const facebook::react::ObjCTurboModule::InitParams &)params
 {
-  return std::make_shared<facebook::react::${
-    module.moduleName
-  }SpecJSI>(params);
+  return std::make_shared<facebook::react::${module.moduleName}SpecJSI>(params);
 }
 #endif
 
@@ -123,13 +120,17 @@ ${serializedMethods
         ];
       });
 
-  if(argv.dryRun) {
-    console.log(filesToWrite.map(([filePath, fileContent]) => `File: ${filePath}\n${fileContent}`).join('\n\n'));
+  if (argv.dryRun) {
+    console.log(
+      filesToWrite
+        .map(([filePath, fileContent]) => `File: ${filePath}\n${fileContent}`)
+        .join('\n\n')
+    );
     return;
   }
 
   try {
-    Promise.allSettled(
+    await Promise.allSettled(
       filesToWrite.map(([filePath, fileContent]) =>
         fs.promises.writeFile(filePath, fileContent)
       )
