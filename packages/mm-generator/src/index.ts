@@ -1,6 +1,8 @@
 import yargs from 'yargs';
+import fs from 'fs';
+import path from 'path';
 import { generateSchema, parseCodegenConfig } from './schema';
-import chalk from 'chalk'
+import chalk from 'chalk';
 import {
   StructCollector,
   convertProtocolMethodToSwiftCall,
@@ -8,82 +10,121 @@ import {
   serializeMethod,
 } from './serializeMethod';
 
-const args: Record<string, yargs.Options> = {
+const args = {
   'swift-header': {
     type: 'string',
-    description: `The name of the Swift header. This header is imported at the top of the generated mm file. Example: ${chalk.cyan( 'MyModule-Swift.h' )}`,
-    defaultDescription: 'By default, we will look for a podspec in the current directory and use the name of the pod as the Swift header.',
+    description: `The name of the Swift header. This header is imported at the top of the generated mm file. Example: ${chalk.cyan(
+      'MyModule-Swift.h'
+    )}`,
+    defaultDescription:
+      'By default, we will look for a podspec in the current directory and use the name of the pod as the Swift header.',
   },
-  'output': {
-    type: 'string',
-    description: `The output directory for the generated mm file. Example: ${chalk.cyan('/ios/MyModule.mm')}`,
-    defaultDescription: `By default, we will use ${chalk.cyan('ios/<ModuleName>.mm')} as the output file.`,
-    normalize: true
+} satisfies Record<string, yargs.Options>;
+
+/**
+ * Looks for a podspec file in the current directory and returns the name of the pod appended with -Swift.h.
+ */
+function resolveSwiftHeader() {
+  const podspec = fs
+    .readdirSync(process.cwd())
+    .find((file) => file.endsWith('.podspec'));
+
+  if (podspec) {
+    const podName = podspec.split('.podspec')[0];
+    return `${podName}-Swift.h`;
   }
+
+  return null;
 }
 
-async function main(argv: yargs.Arguments<any>) {
+async function main(
+  argv: yargs.ArgumentsCamelCase<yargs.InferredOptionTypes<typeof args>>
+) {
+  const swiftHeader = argv.swiftHeader ?? resolveSwiftHeader();
+
+  if (swiftHeader === null) {
+    throw new Error(
+      'Could not find a .podspec in the current directory. Make sure you are running this command from the root of your React Native project. Alternatively, you can specify the Swift header with the --swift-header flag. To see the usage: --help'
+    );
+  }
+
   const codegenConfig = parseCodegenConfig();
   const schema = generateSchema(codegenConfig);
 
-  for (const key of Object.keys(schema.modules)) {
-    const module = schema.modules[key];
-
-    if (!module || module?.type === 'Component') {
-      // TODO handle views
-      continue;
-    }
-
-    const aliasResolver = createAliasResolver(module.aliasMap);
-    const structCollector = new StructCollector();
-
-    const serializedModules = module.spec.properties
-    .filter((property) => property.name !== 'getConstants')
-    .map((property) =>
-         serializeMethod(
-           module.moduleName,
-           property,
-           structCollector,
-           aliasResolver
-         )
-        );
-
-        const contents = `#import "${module.moduleName}.h"
-
-        @implementation ${module.moduleName}{
-          ${module.moduleName}Swift* swift_impl; 
+  const filesToWrite: [filePath: string, fileContents: string][] =
+    Object.values(schema.modules)
+      .filter((module) => module.type === 'NativeModule')
+      .map((module) => {
+        if (module.type !== 'NativeModule') {
+          throw new Error('Module type is not NativeModule');
         }
 
-        RCT_EXPORT_MODULE()
+        const aliasResolver = createAliasResolver(module.aliasMap);
+        const structCollector = new StructCollector();
 
-        - (instancetype)init {
-          swift_impl = [[${module.moduleName}Swift alloc] init];
-          return self;
-        }
+        const serializedMethods = module.spec.properties
+          .filter((property) => property.name !== 'getConstants')
+          .map((property) =>
+            serializeMethod(
+              module.moduleName,
+              property,
+              structCollector,
+              aliasResolver
+            )
+          );
 
-        + (BOOL)requiresMainQueueSetup {
-          return NO;
-        }
+        return [
+          path.join('ios', `${module.moduleName}.mm`),
+          `#import "${module.moduleName}.h"
+#import "${swiftHeader}"
 
-        # pragma mark - Methods
+@implementation ${module.moduleName}{
+  ${module.moduleName}Swift* swift_impl; 
+}
 
-        ${serializedModules
-          .map(([method]) => convertProtocolMethodToSwiftCall(method!.protocolMethod))
-          .join('\n\n')}
+RCT_EXPORT_MODULE()
 
-          # pragma mark - New Arch Pointer
+- (instancetype)init {
+  swift_impl = [[${module.moduleName}Swift alloc] init];
+  return self;
+}
 
-          #ifdef RCT_NEW_ARCH_ENABLED
-          - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
-            (const facebook::react::ObjCTurboModule::InitParams &)params
-          {
-            return std::make_shared<facebook::react::${module.moduleName}SpecJSI>(params);
-          }
-          #endif
++ (BOOL)requiresMainQueueSetup {
+  return NO;
+}
 
-          @end`;
+# pragma mark - Methods
 
-          console.log(contents);
+${serializedMethods
+  .map(([method]) =>
+    convertProtocolMethodToSwiftCall(method!.protocolMethod)
+  )
+  .join('\n\n')}
+
+# pragma mark - New Arch Pointer
+
+#ifdef RCT_NEW_ARCH_ENABLED
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+  (const facebook::react::ObjCTurboModule::InitParams &)params
+{
+  return std::make_shared<facebook::react::${
+    module.moduleName
+  }SpecJSI>(params);
+}
+#endif
+
+@end`,
+        ];
+      });
+
+  try {
+    Promise.allSettled(
+      filesToWrite.map(([filePath, fileContent]) =>
+        fs.promises.writeFile(filePath, fileContent)
+      )
+    );
+  } catch (e) {
+    console.error(e);
   }
 }
 

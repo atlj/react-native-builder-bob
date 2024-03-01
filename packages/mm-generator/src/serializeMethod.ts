@@ -61,10 +61,8 @@ function createAliasResolver(aliasMap: NativeModuleAliasMap): AliasResolver {
 //           reject:(RCTPromiseRejectBlock)reject;
 function convertProtocolMethodToSwiftCall(protocolMethod: string): string {
   protocolMethod = protocolMethod.replace(';', '');
-  const flattened = protocolMethod
-    .replace('\n', ' ')
-    .replace(/\s+/g, ' ');
-  const [, returnType,signature] = flattened.match(/- (\([^)]+\))(.+)/);
+  const flattened = protocolMethod.replace('\n', ' ').replace(/\s+/g, ' ');
+  const [, returnType, signature] = flattened.match(/- (\([^)]+\))(.+)/);
 
   return `RCT_EXPORT_METHOD(${signature}) {
     return [swift_impl ${signature}];

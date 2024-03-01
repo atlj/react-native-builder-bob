@@ -3,9 +3,7 @@ import fs from 'fs-extra';
 
 import type { SchemaType } from '@react-native/codegen/lib/CodegenSchema';
 
-import {
-  TypeScriptParser
-} from '@react-native/codegen/lib/parsers/typescript/parser';
+import { TypeScriptParser } from '@react-native/codegen/lib/parsers/typescript/parser';
 
 import { z } from 'zod';
 
@@ -35,11 +33,14 @@ function parseCodegenConfig() {
 const typescriptParser = new TypeScriptParser();
 
 function generateSchema(codegenConfig: CodegenConfig): SchemaType {
-  const files = fs.readdirSync(codegenConfig.jsSrcsDir).map((file) => {
-    return path.join(codegenConfig.jsSrcsDir, file);
-  }).filter((file) => {
-    return fs.statSync(file).isFile();
-  })
+  const files = fs
+    .readdirSync(codegenConfig.jsSrcsDir)
+    .map((file) => {
+      return path.join(codegenConfig.jsSrcsDir, file);
+    })
+    .filter((file) => {
+      return fs.statSync(file).isFile();
+    });
 
   return files.reduce(
     (merged, filename) => {
@@ -53,12 +54,12 @@ function generateSchema(codegenConfig: CodegenConfig): SchemaType {
         const schema = typescriptParser.parseFile(filename);
 
         if (schema && schema.modules) {
-          merged.modules = {...merged.modules, ...schema.modules};
+          merged.modules = { ...merged.modules, ...schema.modules };
         }
       }
       return merged;
     },
-    {modules: {}},
+    { modules: {} }
   );
 }
 
