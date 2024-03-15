@@ -37,7 +37,11 @@ function resolveSwiftHeader() {
     .find((file) => file.endsWith('.podspec'));
 
   if (podspec) {
-    const podName = podspec.split('.podspec')[0];
+    const podName = podspec
+      .split('.podspec')[0]
+      ?.replaceAll('-', '_')
+      ?.replaceAll(' ', '_');
+
     return `${podName}-Swift.h`;
   }
 
@@ -131,8 +135,13 @@ ${serializedMethods
 
   try {
     await Promise.allSettled(
-      filesToWrite.map(([filePath, fileContent]) =>
-        fs.promises.writeFile(filePath, fileContent)
+      filesToWrite.map(
+        ([filePath, fileContent]) =>
+          new Promise(async (resolve) => {
+            console.log('Wrote the Objective-C++ implementation to:', chalk.blue(filePath));
+            await fs.promises.writeFile(filePath, fileContent);
+            resolve(null);
+          })
       )
     );
   } catch (e) {
